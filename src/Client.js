@@ -356,14 +356,14 @@ class Client extends EventEmitter {
         await this.inject();
 
         this.pupPage.on('framenavigated', async (frame) => {
-            if(frame.url().includes('post_logout=1') || this.lastLoggedOut) {
-                this.emit(Events.DISCONNECTED, 'LOGOUT');
-                await this.authStrategy.logout();
-                await this.authStrategy.beforeBrowserInitialized();
-                await this.authStrategy.afterBrowserInitialized();
-                this.lastLoggedOut = false;
-            }
-            await this.inject();
+            // if(frame.url().includes('post_logout=1') || this.lastLoggedOut) {
+            //     this.emit(Events.DISCONNECTED, 'LOGOUT');
+            //     await this.authStrategy.logout();
+            //     await this.authStrategy.beforeBrowserInitialized();
+            //     await this.authStrategy.afterBrowserInitialized();
+            //     this.lastLoggedOut = false;
+            // }
+            // await this.inject();
         });
     }
 
