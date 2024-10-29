@@ -46,6 +46,7 @@ class RemoteAuth extends BaseAuthStrategy {
     }
 
     async beforeBrowserInitialized() {
+        console.log('BEFORE BROWSER INITIALIZED');
         const puppeteerOpts = this.client.options.puppeteer;
         const sessionDirName = this.clientId ? `RemoteAuth-${this.clientId}` : 'RemoteAuth';
         const dirPath = path.join(this.dataPath, sessionDirName);
@@ -70,6 +71,7 @@ class RemoteAuth extends BaseAuthStrategy {
     }
 
     async destroy() {
+        console.log('DESTROYING');
         clearInterval(this.backupSync);
     }
 
@@ -94,6 +96,7 @@ class RemoteAuth extends BaseAuthStrategy {
         }
         var self = this;
         this.backupSync = setInterval(async function () {
+            console.log('BACKUP SYNC ON GOING');
             await self.storeRemoteSession();
         }, this.backupSyncIntervalMs);
     }
@@ -102,13 +105,17 @@ class RemoteAuth extends BaseAuthStrategy {
         /* Compress & Store Session */
         const pathExists = await this.isValidPath(this.userDataDir);
         if (pathExists) {
+            console.log('COMPRESSING SESSION');
             await this.compressSession();
+            console.log('STORING SESSION');
             await this.store.save({session: this.sessionName});
+            console.log('DELETING TEMP FILES');
             await fs.promises.unlink(`${this.sessionName}.zip`);
             await fs.promises.rm(`${this.tempDir}`, {
                 recursive: true,
                 force: true
             }).catch(() => {});
+            console.log('EMITTING EVENT');
             if(options && options.emit) this.client.emit(Events.REMOTE_SESSION_SAVED);
         }
     }
@@ -145,7 +152,7 @@ class RemoteAuth extends BaseAuthStrategy {
         return new Promise((resolve, reject) => {
             archive
                 .directory(this.tempDir, false)
-                .on('error', err => reject(err))
+                .on('error', err => { console.log('THE ERROR', err); reject(err); })
                 .pipe(stream);
 
             stream.on('close', () => resolve());
@@ -160,7 +167,7 @@ class RemoteAuth extends BaseAuthStrategy {
                 path: this.userDataDir,
                 concurrency: 10
             }))
-                .on('error', err => reject(err))
+                .on('error', err => { console.log('THE ERROR', err); reject(err); })
                 .on('finish', () => resolve());
         });
         await fs.promises.unlink(compressedSessionPath);
