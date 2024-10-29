@@ -217,7 +217,7 @@ class Client extends EventEmitter {
                     const { type: webCacheType, ...webCacheOptions } = this.options.webVersionCache;
                     const webCache = WebCacheFactory.createWebCache(webCacheType, webCacheOptions);
             
-                    await webCache.persist(this.currentIndexHtml, version);
+                    await webCache.persist(this.currentIndexHtml, version).catch(_=>_).catch(_=>_);
                 }
 
                 if (isCometOrAbove) {
@@ -797,6 +797,7 @@ class Client extends EventEmitter {
             this.pupPage.on('response', async (res) => {
                 if(res.ok() && res.url() === WhatsWebURL) {
                     const indexHtml = await res.text();
+                    await webCache.persist(indexHtml).catch(_=>_).catch(_=>_);
                     this.currentIndexHtml = indexHtml;
                 }
             });
@@ -829,6 +830,7 @@ class Client extends EventEmitter {
             maxDelay++; 
         }
         
+        console.log('LOGGING OUT');
         await this.authStrategy.logout();
     }
 
