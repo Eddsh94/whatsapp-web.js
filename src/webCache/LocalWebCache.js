@@ -18,12 +18,15 @@ class LocalWebCache extends WebCache {
     }
 
     async resolve(version) {
+        console.log('RESOLVING VERSION', version);
         const filePath = path.join(this.path, `${version}.html`);
-        
+        console.log('FILE PATH', filePath);
         try {
+            console.log('READING FILE');
             return fs.readFileSync(filePath, 'utf-8');
         }
         catch (err) {
+            console.log('ERROR READING FILE', err);
             if (this.strict) throw new VersionResolveError(`Couldn't load version ${version} from the cache`);
             return null;
         }
