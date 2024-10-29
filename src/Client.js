@@ -252,7 +252,7 @@ class Client extends EventEmitter {
                  * @event Client#ready
                  */
             this.emit(Events.READY);
-            this.authStrategy.afterAuthReady();
+            await this.authStrategy.afterAuthReady();
         });
         let lastPercent = null;
         await exposeFunctionIfAbsent(this.pupPage, 'onOfflineProgressUpdateEvent', async (percent) => {
@@ -295,6 +295,7 @@ class Client extends EventEmitter {
 
         browser = null;
         page = null;
+        console.log('BEFORE BROWSER INITIALIZED');
 
         await this.authStrategy.beforeBrowserInitialized();
 
@@ -313,8 +314,6 @@ class Client extends EventEmitter {
             }
             // navigator.webdriver fix
             browserArgs.push('--disable-blink-features=AutomationControlled');
-
-            console.log('LAUNCHING BROWSER');
             browser = await puppeteer.launch({...puppeteerOpts, args: browserArgs});
             console.log('LAUNCHED BROWSER');
             page = (await browser.pages())[0];
