@@ -145,6 +145,7 @@ class Client extends EventEmitter {
                  * @param {string} message
                  */
                 this.emit(Events.AUTHENTICATION_FAILURE, failureEventPayload);
+                console.log('DESTROYING x1');
                 await this.destroy();
                 if (restart) {
                     // session restore failed so try again but without session to force new authentication
@@ -168,6 +169,7 @@ class Client extends EventEmitter {
                     qrRetries++;
                     if (qrRetries > this.options.qrMaxRetries) {
                         this.emit(Events.DISCONNECTED, 'Max qrcode retries reached');
+                        console.log('DESTROYING x2');
                         await this.destroy();
                     }
                 }
@@ -590,6 +592,7 @@ class Client extends EventEmitter {
                      */
                 await this.authStrategy.disconnect();
                 this.emit(Events.DISCONNECTED, state);
+                console.log('DESTROYING x3');
                 this.destroy();
             }
         });
@@ -805,6 +808,7 @@ class Client extends EventEmitter {
      * Closes the client
      */
     async destroy() {
+        console.log('DESTROYING x4');
         await this.pupBrowser.close();
         await this.authStrategy.destroy();
     }
