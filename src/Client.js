@@ -102,7 +102,7 @@ class Client extends EventEmitter {
         const isCometOrAbove = parseInt(version.split('.')?.[1]) >= 3000;
         console.log('IS COMET OR ABOVE', isCometOrAbove);
         if (isCometOrAbove) {
-            console.log('EXPOSING AUTH STORE');
+            console.log('EXPOSING AUTH STORE', this.pupPage);
             await this.pupPage.evaluate(ExposeAuthStore);
         } else {
             console.log('EXPOSING LEGACY AUTH STORE');
