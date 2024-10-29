@@ -353,8 +353,6 @@ class Client extends EventEmitter {
             referer: 'https://whatsapp.com/'
         });
 
-        await this.inject();
-
         this.pupPage.on('framenavigated', async (frame) => {
             if(frame.url().includes('post_logout=1') || this.lastLoggedOut) {
                 this.emit(Events.DISCONNECTED, 'LOGOUT');
