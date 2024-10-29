@@ -109,23 +109,30 @@ class Client extends EventEmitter {
             await this.pupPage.evaluate(ExposeLegacyAuthStore, moduleRaid.toString());
         }
         console.log('EVALUATING AUTH NEEDED');
-        const needAuthentication = await this.pupPage.evaluate(async () => {
-            let state = window.AuthStore.AppState.state;
-            console.log('STATE', state);
-            if (state === 'OPENING' || state === 'UNLAUNCHED' || state === 'PAIRING') {
-                // wait till state changes
-                await new Promise(r => {
-                    window.AuthStore.AppState.on('change:state', function waitTillInit(_AppState, state) {
-                        if (state !== 'OPENING' && state !== 'UNLAUNCHED' && state !== 'PAIRING') {
-                            window.AuthStore.AppState.off('change:state', waitTillInit);
-                            r();
-                        } 
-                    });
-                }); 
-            }
-            state = window.AuthStore.AppState.state;
-            return state == 'UNPAIRED' || state == 'UNPAIRED_IDLE';
-        });
+        console.log("THIS PUP PAGE", this.pupPage);
+        let needAuthentication;
+        try {
+            needAuthentication = await this.pupPage.evaluate(async () => {
+                console.log("EVALUATING AUTH NEEDED INSIDE EVALUATE");
+                let state = window.AuthStore.AppState.state;
+                console.log('STATE', state);
+                if (state === 'OPENING' || state === 'UNLAUNCHED' || state === 'PAIRING') {
+                    // wait till state changes
+                    await new Promise(r => {
+                        window.AuthStore.AppState.on('change:state', function waitTillInit(_AppState, state) {
+                            if (state !== 'OPENING' && state !== 'UNLAUNCHED' && state !== 'PAIRING') {
+                                window.AuthStore.AppState.off('change:state', waitTillInit);
+                                r();
+                            } 
+                        });
+                    }); 
+                }
+                state = window.AuthStore.AppState.state;
+                return state == 'UNPAIRED' || state == 'UNPAIRED_IDLE';
+            });
+        } catch (error) {
+            console.log('ERROR EVALUATING AUTH NEEDED', error);
+        }
 
         if (needAuthentication) {
             console.log('AUTH NEEDED');
