@@ -93,20 +93,25 @@ class Client extends EventEmitter {
      * Private function
      */
     async inject() {
+        console.log('INJECTING');
         await this.pupPage.waitForFunction('window.Debug?.VERSION != undefined', {timeout: this.options.authTimeoutMs});
 
+        console.log('GETTING VERSION');
         const version = await this.getWWebVersion();
+        console.log('VERSION', version);
         const isCometOrAbove = parseInt(version.split('.')?.[1]) >= 3000;
-
+        console.log('IS COMET OR ABOVE', isCometOrAbove);
         if (isCometOrAbove) {
+            console.log('EXPOSING AUTH STORE');
             await this.pupPage.evaluate(ExposeAuthStore);
         } else {
+            console.log('EXPOSING LEGACY AUTH STORE');
             await this.pupPage.evaluate(ExposeLegacyAuthStore, moduleRaid.toString());
         }
-
+        console.log('EVALUATING AUTH NEEDED');
         const needAuthentication = await this.pupPage.evaluate(async () => {
             let state = window.AuthStore.AppState.state;
-
+            console.log('STATE', state);
             if (state === 'OPENING' || state === 'UNLAUNCHED' || state === 'PAIRING') {
                 // wait till state changes
                 await new Promise(r => {
@@ -123,6 +128,7 @@ class Client extends EventEmitter {
         });
 
         if (needAuthentication) {
+            console.log('AUTH NEEDED');
             const { failed, failureEventPayload, restart } = await this.authStrategy.onAuthenticationNeeded();
 
             if(failed) {
@@ -142,7 +148,9 @@ class Client extends EventEmitter {
 
             // Register qr events
             let qrRetries = 0;
+            console.log('EXPOSING QR CHANGED EVENT');
             await exposeFunctionIfAbsent(this.pupPage, 'onQRChangedEvent', async (qr) => {
+                console.log('QR CHANGED EVENT');
                 /**
                 * Emitted when a QR code is received
                 * @event Client#qr
@@ -160,6 +168,7 @@ class Client extends EventEmitter {
 
 
             await this.pupPage.evaluate(async () => {
+                console.log('EVALUATING REGISTRATION UTILS');
                 const registrationInfo = await window.AuthStore.RegistrationUtils.waSignalStore.getRegistrationInfo();
                 const noiseKeyPair = await window.AuthStore.RegistrationUtils.waNoiseInfo.get();
                 const staticKeyB64 = window.AuthStore.Base64Tools.encodeB64(noiseKeyPair.staticKeyPair.pubKey);
@@ -167,13 +176,15 @@ class Client extends EventEmitter {
                 const advSecretKey = await window.AuthStore.RegistrationUtils.getADVSecretKey();
                 const platform =  window.AuthStore.RegistrationUtils.DEVICE_PLATFORM;
                 const getQR = (ref) => ref + ',' + staticKeyB64 + ',' + identityKeyB64 + ',' + advSecretKey + ',' + platform;
-                
+                console.log('GET QR', getQR(window.AuthStore.Conn.ref));
                 window.onQRChangedEvent(getQR(window.AuthStore.Conn.ref)); // initial qr
                 window.AuthStore.Conn.on('change:ref', (_, ref) => { window.onQRChangedEvent(getQR(ref)); }); // future QR changes
+                console.log('EVALUATING REGISTRATION UTILS DONE');
             });
         }
 
         await exposeFunctionIfAbsent(this.pupPage, 'onAuthAppStateChangedEvent', async (state) => {
+            console.log('AUTH APP STATE CHANGED EVENT');
             if (state == 'UNPAIRED_IDLE') {
                 // refresh qr code
                 window.Store.Cmd.refreshQR();
@@ -246,6 +257,7 @@ class Client extends EventEmitter {
             await this.pupPage.waitForNavigation({waitUntil: 'load', timeout: 5000}).catch((_) => _);
         });
         await this.pupPage.evaluate(() => {
+            console.log('EVALUATING APP STATE EVENTS');
             window.AuthStore.AppState.on('change:state', (_AppState, state) => { window.onAuthAppStateChangedEvent(state); });
             window.AuthStore.AppState.on('change:hasSynced', () => { window.onAppStateHasSyncedEvent(); });
             window.AuthStore.Cmd.on('offline_progress_update', () => {
@@ -279,9 +291,13 @@ class Client extends EventEmitter {
 
         const puppeteerOpts = this.options.puppeteer;
         if (puppeteerOpts && puppeteerOpts.browserWSEndpoint) {
+            console.log('CONNECTING TO BROWSER');
             browser = await puppeteer.connect(puppeteerOpts);
+            console.log('CONNECTED TO BROWSER');
             page = await browser.newPage();
+            console.log('NEW PAGE');
         } else {
+            console.log('LAUNCHING BROWSER');
             const browserArgs = [...(puppeteerOpts.args || [])];
             if(!browserArgs.find(arg => arg.includes('--user-agent'))) {
                 browserArgs.push(`--user-agent=${this.options.userAgent}`);
@@ -289,8 +305,11 @@ class Client extends EventEmitter {
             // navigator.webdriver fix
             browserArgs.push('--disable-blink-features=AutomationControlled');
 
+            console.log('LAUNCHING BROWSER');
             browser = await puppeteer.launch({...puppeteerOpts, args: browserArgs});
+            console.log('LAUNCHED BROWSER');
             page = (await browser.pages())[0];
+            console.log('NEW PAGE');
         }
 
         if (this.options.proxyAuthentication !== undefined) {
