@@ -51,15 +51,19 @@ class RemoteAuth extends BaseAuthStrategy {
         const sessionDirName = this.clientId ? `RemoteAuth-${this.clientId}` : 'RemoteAuth';
         const dirPath = path.join(this.dataPath, sessionDirName);
 
+        console.log('PUPPETEER OPTS', puppeteerOpts);
         if (puppeteerOpts.userDataDir && puppeteerOpts.userDataDir !== dirPath) {
+            console.log('PUPPETEER OPTS ERROR', puppeteerOpts);
             throw new Error('RemoteAuth is not compatible with a user-supplied userDataDir.');
         }
 
         this.userDataDir = dirPath;
         this.sessionName = sessionDirName;
 
+        console.log('EXTRACTING REMOTE SESSION');
         await this.extractRemoteSession();
 
+        console.log('SETTING PUPPETEER OPTS');
         this.client.options.puppeteer = {
             ...puppeteerOpts,
             userDataDir: dirPath
