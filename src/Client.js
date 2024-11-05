@@ -71,7 +71,7 @@ class Client extends EventEmitter {
         } else {
             this.authStrategy = this.options.authStrategy;
         }
-
+        this.injected = false;
         this.authStrategy.setup(this);
 
         /**
@@ -93,29 +93,21 @@ class Client extends EventEmitter {
      * Private function
      */
     async inject() {
-        console.log('INJECTING');
         await this.pupPage.waitForFunction('window.Debug?.VERSION != undefined', {timeout: this.options.authTimeoutMs});
 
-        console.log('GETTING VERSION');
         const version = await this.getWWebVersion();
-        console.log('VERSION', version);
         const isCometOrAbove = parseInt(version.split('.')?.[1]) >= 3000;
-        console.log('IS COMET OR ABOVE', isCometOrAbove);
         if (isCometOrAbove) {
-            console.log('EXPOSING AUTH STORE', this.pupPage);
             await this.pupPage.evaluate(ExposeAuthStore);
         } else {
-            console.log('EXPOSING LEGACY AUTH STORE');
             await this.pupPage.evaluate(ExposeLegacyAuthStore, moduleRaid.toString());
         }
-        console.log('EVALUATING AUTH NEEDED');
-        console.log("THIS PUP PAGE", this.pupPage);
+
         let needAuthentication;
         try {
             needAuthentication = await this.pupPage.evaluate(async () => {
-                console.log("EVALUATING AUTH NEEDED INSIDE EVALUATE");
                 let state = window.AuthStore.AppState.state;
-                console.log('STATE', state);
+
                 if (state === 'OPENING' || state === 'UNLAUNCHED' || state === 'PAIRING') {
                     // wait till state changes
                     await new Promise(r => {
@@ -135,7 +127,6 @@ class Client extends EventEmitter {
         }
 
         if (needAuthentication) {
-            console.log('AUTH NEEDED');
             const { failed, failureEventPayload, restart } = await this.authStrategy.onAuthenticationNeeded();
 
             if(failed) {
@@ -154,11 +145,14 @@ class Client extends EventEmitter {
                 return;
             }
 
+            await exposeFunctionIfAbsent(this.pupPage, 'onLogoutEvent', async () => {
+                this.lastLoggedOut = true;
+                await this.pupPage.waitForNavigation({waitUntil: 'load', timeout: 5000}).catch(_ => _);
+            });
+
             // Register qr events
             let qrRetries = 0;
-            console.log('EXPOSING QR CHANGED EVENT');
             await exposeFunctionIfAbsent(this.pupPage, 'onQRChangedEvent', async (qr) => {
-                console.log('QR CHANGED EVENT');
                 /**
                 * Emitted when a QR code is received
                 * @event Client#qr
@@ -177,7 +171,6 @@ class Client extends EventEmitter {
 
 
             await this.pupPage.evaluate(async () => {
-                console.log('EVALUATING REGISTRATION UTILS');
                 const registrationInfo = await window.AuthStore.RegistrationUtils.waSignalStore.getRegistrationInfo();
                 const noiseKeyPair = await window.AuthStore.RegistrationUtils.waNoiseInfo.get();
                 const staticKeyB64 = window.AuthStore.Base64Tools.encodeB64(noiseKeyPair.staticKeyPair.pubKey);
@@ -188,12 +181,10 @@ class Client extends EventEmitter {
                 console.log('GET QR', getQR(window.AuthStore.Conn.ref));
                 window.onQRChangedEvent(getQR(window.AuthStore.Conn.ref)); // initial qr
                 window.AuthStore.Conn.on('change:ref', (_, ref) => { window.onQRChangedEvent(getQR(ref)); }); // future QR changes
-                console.log('EVALUATING REGISTRATION UTILS DONE');
             });
         }
 
         await exposeFunctionIfAbsent(this.pupPage, 'onAuthAppStateChangedEvent', async (state) => {
-            console.log('AUTH APP STATE CHANGED EVENT');
             if (state == 'UNPAIRED_IDLE') {
                 // refresh qr code
                 window.Store.Cmd.refreshQR();
@@ -252,7 +243,9 @@ class Client extends EventEmitter {
                  * @event Client#ready
                  */
             this.emit(Events.READY);
-            await this.authStrategy.afterAuthReady();
+            if (this.injected) {
+                await this.authStrategy.afterAuthReady();
+            }
         });
         let lastPercent = null;
         await exposeFunctionIfAbsent(this.pupPage, 'onOfflineProgressUpdateEvent', async (percent) => {
@@ -261,13 +254,9 @@ class Client extends EventEmitter {
                 this.emit(Events.LOADING_SCREEN, percent, 'WhatsApp'); // Message is hardcoded as "WhatsApp" for now
             }
         });
-        await exposeFunctionIfAbsent(this.pupPage, 'onLogoutEvent', async () => {
-            this.lastLoggedOut = true;
-            await this.pupPage.waitForNavigation({waitUntil: 'load', timeout: 5000}).catch((_) => _);
-        });
+
         await this.pupPage.evaluate(() => {
-            console.log('EVALUATING APP STATE EVENTS');
-            if (window.AuthStore.AppState) {
+            if (window?.AuthStore?.AppState) {
                 window.AuthStore.AppState.on('change:state', (_AppState, state) => { window.onAuthAppStateChangedEvent(state); });
                 window.AuthStore.AppState.on('change:hasSynced', () => { window.onAppStateHasSyncedEvent(); });
                 window.AuthStore.Cmd.on('offline_progress_update', () => {
@@ -289,6 +278,7 @@ class Client extends EventEmitter {
                 }, 5000)
             }
         });
+        this.injected = true;
     }
 
     /**
@@ -369,14 +359,18 @@ class Client extends EventEmitter {
         await this.inject();
 
         this.pupPage.on('framenavigated', async (frame) => {
-            // if(frame.url().includes('post_logout=1') || this.lastLoggedOut) {
-            //     this.emit(Events.DISCONNECTED, 'LOGOUT');
-            //     await this.authStrategy.logout();
-            //     await this.authStrategy.beforeBrowserInitialized();
-            //     await this.authStrategy.afterBrowserInitialized();
-            //     this.lastLoggedOut = false;
-            // }
-            // await this.inject();
+            try {
+                if(frame.url().includes('post_logout=1') || this.lastLoggedOut) {
+                    this.emit(Events.DISCONNECTED, 'LOGOUT');
+                    await this.authStrategy.logout();
+                    this.lastLoggedOut = true;
+                    await this.destroy();
+                } else {
+                    await this.inject();
+                }
+            } catch (error) {
+                console.log("ERROR IN FRAMENAVIGATED", error);
+            }
         });
     }
 
@@ -577,35 +571,39 @@ class Client extends EventEmitter {
         });
 
         await exposeFunctionIfAbsent(this.pupPage, 'onAppStateChangedEvent', async (state) => {
-            /**
-                 * Emitted when the connection state changes
-                 * @event Client#change_state
-                 * @param {WAState} state the new connection state
-                 */
-            this.emit(Events.STATE_CHANGED, state);
+            try {
 
-            const ACCEPTED_STATES = [WAState.CONNECTED, WAState.OPENING, WAState.PAIRING, WAState.TIMEOUT];
-
-            if (this.options.takeoverOnConflict) {
-                ACCEPTED_STATES.push(WAState.CONFLICT);
-
-                if (state === WAState.CONFLICT) {
-                    setTimeout(() => {
-                        this.pupPage.evaluate(() => window.Store.AppState.takeover());
-                    }, this.options.takeoverTimeoutMs);
-                }
-            }
-
-            if (!ACCEPTED_STATES.includes(state)) {
                 /**
-                     * Emitted when the client has been disconnected
-                     * @event Client#disconnected
-                     * @param {WAState|"LOGOUT"} reason reason that caused the disconnect
+                     * Emitted when the connection state changes
+                     * @event Client#change_state
+                     * @param {WAState} state the new connection state
                      */
-                await this.authStrategy.disconnect();
-                this.emit(Events.DISCONNECTED, state);
-                console.log('DESTROYING x3');
-                this.destroy();
+                this.emit(Events.STATE_CHANGED, state);
+    
+                const ACCEPTED_STATES = [WAState.CONNECTED, WAState.OPENING, WAState.PAIRING, WAState.TIMEOUT];
+    
+                if (this.options.takeoverOnConflict) {
+                    ACCEPTED_STATES.push(WAState.CONFLICT);
+    
+                    if (state === WAState.CONFLICT) {
+                        setTimeout(() => {
+                            this.pupPage.evaluate(() => window.Store.AppState.takeover());
+                        }, this.options.takeoverTimeoutMs);
+                    }
+                }
+    
+                if (!ACCEPTED_STATES.includes(state)) {
+                    /**
+                         * Emitted when the client has been disconnected
+                         * @event Client#disconnected
+                         * @param {WAState|"LOGOUT"} reason reason that caused the disconnect
+                         */
+                    await this.authStrategy.disconnect();
+                    this.emit(Events.DISCONNECTED, state);
+                    this.destroy();
+                }
+            } catch (error) {
+                console.log("ERROR IN APP STATE CHANGED", error);
             }
         });
 
